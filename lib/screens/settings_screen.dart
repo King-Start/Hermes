@@ -10,32 +10,33 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  final _baseUrlCtrl = TextEditingController();
-  final _apiKeyCtrl = TextEditingController();
-  final _modelCtrl = TextEditingController();
-  bool _obscure = true;
+  final _baseUrlController = TextEditingController();
+  final _apiKeyController = TextEditingController();
+  final _modelController = TextEditingController();
+  bool _obscureApiKey = true;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _loadConfig();
   }
 
-  void _load() {
-    final c = context.read<ConfigManager>().config;
-    _baseUrlCtrl.text = c.baseUrl;
-    _apiKeyCtrl.text = c.apiKey;
-    _modelCtrl.text = c.model;
+  void _loadConfig() {
+    final config = context.read<ConfigManager>().config;
+    _baseUrlController.text = config.baseUrl;
+    _apiKeyController.text = config.apiKey;
+    _modelController.text = config.model;
   }
 
-  Future<void> _save() async {
-    final manager = context.read<ConfigManager>();
-    final c = manager.config;
-    await manager.updateConfig(c.copyWith(
-      baseUrl: _baseUrlCtrl.text.trim(),
-      apiKey: _apiKeyCtrl.text.trim(),
-      model: _modelCtrl.text.trim(),
-    ));
+  Future<void> _saveConfig() async {
+    final configManager = context.read<ConfigManager>();
+    final newConfig = configManager.config.copyWith(
+      baseUrl: _baseUrlController.text.trim(),
+      apiKey: _apiKeyController.text.trim(),
+      model: _modelController.text.trim(),
+    );
+    await configManager.updateConfig(newConfig);
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Settings saved')),
@@ -45,9 +46,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void dispose() {
-    _baseUrlCtrl.dispose();
-    _apiKeyCtrl.dispose();
-    _modelCtrl.dispose();
+    _baseUrlController.dispose();
+    _apiKeyController.dispose();
+    _modelController.dispose();
     super.dispose();
   }
 
@@ -57,77 +58,89 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final config = context.watch<ConfigManager>().config;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Settings')),
+      appBar: AppBar(
+        title: const Text('Settings'),
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // LLM Config
+          // LLM Settings Section
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(children: [
-                    Icon(Icons.psychology, color: theme.colorScheme.primary),
-                    const SizedBox(width: 8),
-                    Text('LLM Configuration',
-                        style: theme.textTheme.titleMedium),
-                  ]),
+                  Row(
+                    children: [
+                      Icon(Icons.psychology, color: theme.colorScheme.primary),
+                      const SizedBox(width: 8),
+                      Text(
+                        'LLM Settings',
+                        style: theme.textTheme.titleMedium,
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 16),
                   TextField(
-                    controller: _baseUrlCtrl,
+                    controller: _baseUrlController,
                     decoration: const InputDecoration(
                       labelText: 'Base URL',
                       hintText: 'https://api.openai.com/v1',
-                      helperText: 'OpenAI-compatible endpoint',
+                      helperText: 'OpenAI-compatible API endpoint',
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 16),
                   TextField(
-                    controller: _apiKeyCtrl,
+                    controller: _apiKeyController,
                     decoration: InputDecoration(
                       labelText: 'API Key',
                       hintText: 'sk-...',
                       suffixIcon: IconButton(
-                        icon: Icon(_obscure
-                            ? Icons.visibility
-                            : Icons.visibility_off),
-                        onPressed: () =>
-                            setState(() => _obscure = !_obscure),
-                      ),
-                    ),
-                    obscureText: _obscure,
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _modelCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Model',
-                      hintText: 'gpt-4o-mini',
-                      helperText: 'Model identifier',
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(children: [
-                    Text('Temperature: ${config.temperature.toStringAsFixed(2)}'),
-                    Expanded(
-                      child: Slider(
-                        value: config.temperature,
-                        min: 0.0,
-                        max: 1.0,
-                        divisions: 20,
-                        label: config.temperature.toStringAsFixed(2),
-                        onChanged: (v) {
-                          context.read<ConfigManager>().updateConfig(
-                              config.copyWith(temperature: v));
+                        icon: Icon(
+                          _obscureApiKey ? Icons.visibility : Icons.visibility_off,
+                        ),
+                        onPressed: () {
+                          setState(() {
+                            _obscureApiKey = !_obscureApiKey;
+                          });
                         },
                       ),
                     ),
-                  ]),
-                  const SizedBox(vertical: 8),
+                    obscureText: _obscureApiKey,
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _modelController,
+                    decoration: const InputDecoration(
+                      labelText: 'Model',
+                      hintText: 'gpt-4o-mini',
+                      helperText: 'Model name',
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Text('Temperature: ${config.temperature.toStringAsFixed(2)}'),
+                      Expanded(
+                        child: Slider(
+                          value: config.temperature,
+                          min: 0.0,
+                          max: 1.0,
+                          divisions: 10,
+                          label: config.temperature.toStringAsFixed(2),
+                          onChanged: (value) {
+                            context.read<ConfigManager>().updateConfig(
+                              config.copyWith(temperature: value),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
                   FilledButton.icon(
-                    onPressed: _save,
+                    onPressed: _saveConfig,
                     icon: const Icon(Icons.save),
                     label: const Text('Save Settings'),
                   ),
@@ -137,38 +150,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 16),
 
-          // Features
+          // Feature Toggles
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(children: [
-                    Icon(Icons.tune, color: theme.colorScheme.primary),
-                    const SizedBox(width: 8),
-                    Text('Features', style: theme.textTheme.titleMedium),
-                  ]),
+                  Row(
+                    children: [
+                      Icon(Icons.settings, color: theme.colorScheme.primary),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Features',
+                        style: theme.textTheme.titleMedium,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
                   SwitchListTile(
                     title: const Text('Enable Tools'),
-                    subtitle: const Text('File, terminal, web search'),
+                    subtitle: const Text('Allow agent to use file/terminal/web tools'),
                     value: config.enableTools,
-                    onChanged: (v) => context.read<ConfigManager>().updateConfig(
-                        config.copyWith(enableTools: v)),
+                    onChanged: (value) {
+                      context.read<ConfigManager>().updateConfig(
+                        config.copyWith(enableTools: value),
+                      );
+                    },
                   ),
                   SwitchListTile(
                     title: const Text('Enable Skills'),
-                    subtitle: const Text('Load reusable capabilities'),
+                    subtitle: const Text('Load reusable skill capabilities'),
                     value: config.enableSkills,
-                    onChanged: (v) => context.read<ConfigManager>().updateConfig(
-                        config.copyWith(enableSkills: v)),
+                    onChanged: (value) {
+                      context.read<ConfigManager>().updateConfig(
+                        config.copyWith(enableSkills: value),
+                      );
+                    },
                   ),
                   SwitchListTile(
                     title: const Text('Enable Memory'),
-                    subtitle: const Text('Persistent context across sessions'),
+                    subtitle: const Text('Persistent user profile & agent notes'),
                     value: config.enableMemory,
-                    onChanged: (v) => context.read<ConfigManager>().updateConfig(
-                        config.copyWith(enableMemory: v)),
+                    onChanged: (value) {
+                      context.read<ConfigManager>().updateConfig(
+                        config.copyWith(enableMemory: value),
+                      );
+                    },
                   ),
                 ],
               ),
@@ -183,18 +211,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(children: [
-                    Icon(Icons.info, color: theme.colorScheme.primary),
-                    const SizedBox(width: 8),
-                    Text('About', style: theme.textTheme.titleMedium),
-                  ]),
+                  Row(
+                    children: [
+                      Icon(Icons.info, color: theme.colorScheme.primary),
+                      const SizedBox(width: 8),
+                      Text(
+                        'About',
+                        style: theme.textTheme.titleMedium,
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 8),
                   const Text('Hermes Agent v1.0.0'),
                   const Text('AI assistant with tools, skills, and memory'),
                   const SizedBox(height: 8),
-                  Text('Inspired by Hermes Agent',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurface.withOpacity(0.5))),
+                  Text(
+                    'Inspired by Hermes Agent',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withOpacity(0.6),
+                    ),
+                  ),
                 ],
               ),
             ),

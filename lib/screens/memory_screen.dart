@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../services/storage.dart';
+import '../services/memory_store.dart';
 
 class MemoryScreen extends StatefulWidget {
   const MemoryScreen({super.key});
@@ -11,25 +11,25 @@ class MemoryScreen extends StatefulWidget {
 
 class _MemoryScreenState extends State<MemoryScreen>
     with SingleTickerProviderStateMixin {
-  late TabController _tabCtrl;
-  final _userCtrl = TextEditingController();
-  final _agentCtrl = TextEditingController();
+  late TabController _tabController;
+  final _userController = TextEditingController();
+  final _agentController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _tabCtrl = TabController(length: 2, vsync: this);
-    _load();
+    _tabController = TabController(length: 2, vsync: this);
+    _loadMemory();
   }
 
-  void _load() {
-    final m = context.read<MemoryStore>();
-    _userCtrl.text = m.userProfile;
-    _agentCtrl.text = m.agentMemory;
+  void _loadMemory() {
+    final memory = context.read<MemoryStore>();
+    _userController.text = memory.userProfile;
+    _agentController.text = memory.agentMemory;
   }
 
-  Future<void> _saveUser() async {
-    await context.read<MemoryStore>().setUserProfile(_userCtrl.text);
+  Future<void> _saveUserProfile() async {
+    await context.read<MemoryStore>().setUserProfile(_userController.text);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('User profile saved')),
@@ -37,8 +37,8 @@ class _MemoryScreenState extends State<MemoryScreen>
     }
   }
 
-  Future<void> _saveAgent() async {
-    await context.read<MemoryStore>().setAgentMemory(_agentCtrl.text);
+  Future<void> _saveAgentMemory() async {
+    await context.read<MemoryStore>().setAgentMemory(_agentController.text);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Agent memory saved')),
@@ -48,21 +48,22 @@ class _MemoryScreenState extends State<MemoryScreen>
 
   @override
   void dispose() {
-    _tabCtrl.dispose();
-    _userCtrl.dispose();
-    _agentCtrl.dispose();
+    _tabController.dispose();
+    _userController.dispose();
+    _agentController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final memory = context.watch<MemoryStore>();
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Memory'),
         bottom: TabBar(
-          controller: _tabCtrl,
+          controller: _tabController,
           tabs: const [
             Tab(text: 'User Profile'),
             Tab(text: 'Agent Memory'),
@@ -70,102 +71,147 @@ class _MemoryScreenState extends State<MemoryScreen>
         ),
       ),
       body: TabBarView(
-        controller: _tabCtrl,
+        controller: _tabController,
         children: [
-          _buildTab(
-            context,
-            icon: Icons.person,
-            title: 'User Profile',
-            description: 'Information about you that the agent should remember.',
-            controller: _userCtrl,
-            onSave: _saveUser,
-          ),
-          _buildTab(
-            context,
-            icon: Icons.psychology,
-            title: 'Agent Memory',
-            description: 'Notes and context the agent should remember.',
-            controller: _agentCtrl,
-            onSave: _saveAgent,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTab(
-    BuildContext context, {
-    required IconData icon,
-    required String title,
-    required String description,
-    required TextEditingController controller,
-    required VoidCallback onSave,
-  }) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Icon(icon, color: theme.colorScheme.primary),
-                  const SizedBox(width: 12),
-                  Expanded(
+          // User Profile Tab
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(title, style: theme.textTheme.titleMedium),
-                        const SizedBox(height: 2),
-                        Text(description,
-                            style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurface
-                                    .withOpacity(0.5))),
+                        Row(
+                          children: [
+                            Icon(Icons.person, color: theme.colorScheme.primary),
+                            const SizedBox(width: 8),
+                            Text(
+                              'User Profile',
+                              style: theme.textTheme.titleMedium,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Information about you that the agent should remember across sessions.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withOpacity(0.6),
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: TextField(
+                    controller: _userController,
+                    decoration: const InputDecoration(
+                      hintText: 'Tell me about yourself...',
+                      border: OutlineInputBorder(),
+                    ),
+                    maxLines: null,
+                    expands: true,
+                    textAlignVertical: TextAlignVertical.top,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        _userController.clear();
+                        _saveUserProfile();
+                      },
+                      icon: const Icon(Icons.clear),
+                      label: const Text('Clear'),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton.icon(
+                      onPressed: _saveUserProfile,
+                      icon: const Icon(Icons.save),
+                      label: const Text('Save'),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 16),
-          Expanded(
-            child: TextField(
-              controller: controller,
-              decoration: InputDecoration(
-                hintText: title == 'User Profile'
-                    ? 'Tell me about yourself...'
-                    : 'Add notes for the agent...',
-                filled: true,
-                border: const OutlineInputBorder(),
-              ),
-              maxLines: null,
-              expands: true,
-              textAlignVertical: TextAlignVertical.top,
+
+          // Agent Memory Tab
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.psychology,
+                                color: theme.colorScheme.primary),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Agent Memory',
+                              style: theme.textTheme.titleMedium,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Notes and context the agent should remember for better responses.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withOpacity(0.6),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: TextField(
+                    controller: _agentController,
+                    decoration: const InputDecoration(
+                      hintText: 'Add notes or context for the agent...',
+                      border: OutlineInputBorder(),
+                    ),
+                    maxLines: null,
+                    expands: true,
+                    textAlignVertical: TextAlignVertical.top,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: () {
+                        _agentController.clear();
+                        _saveAgentMemory();
+                      },
+                      icon: const Icon(Icons.clear),
+                      label: const Text('Clear'),
+                    ),
+                    const SizedBox(width: 8),
+                    FilledButton.icon(
+                      onPressed: _saveAgentMemory,
+                      icon: const Icon(Icons.save),
+                      label: const Text('Save'),
+                    ),
+                  ],
+                ),
+              ],
             ),
-          ),
-          const SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.end,
-            children: [
-              OutlinedButton.icon(
-                onPressed: () {
-                  controller.clear();
-                  onSave();
-                },
-                icon: const Icon(Icons.clear),
-                label: const Text('Clear'),
-              ),
-              const SizedBox(width: 8),
-              FilledButton.icon(
-                onPressed: onSave,
-                icon: const Icon(Icons.save),
-                label: const Text('Save'),
-              ),
-            ],
           ),
         ],
       ),

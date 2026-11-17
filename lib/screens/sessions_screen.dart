@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../models/models.dart';
-import '../services/storage.dart';
+import '../services/session_manager.dart';
+import '../models/chat.dart';
 
 class SessionsScreen extends StatelessWidget {
   const SessionsScreen({super.key});
@@ -9,8 +9,8 @@ class SessionsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final manager = context.watch<SessionManager>();
-    final sessions = manager.sessions;
+    final sessionManager = context.watch<SessionManager>();
+    final sessions = sessionManager.sessions;
 
     return Scaffold(
       appBar: AppBar(
@@ -20,7 +20,7 @@ class SessionsScreen extends StatelessWidget {
             icon: const Icon(Icons.add),
             tooltip: 'New Session',
             onPressed: () {
-              manager.createSession();
+              sessionManager.createSession();
               Navigator.pop(context);
             },
           ),
@@ -31,52 +31,85 @@ class SessionsScreen extends StatelessWidget {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(Icons.history,
-                      size: 64,
-                      color: theme.colorScheme.primary.withOpacity(0.4)),
+                  Icon(
+                    Icons.history,
+                    size: 64,
+                    color: theme.colorScheme.primary.withOpacity(0.5),
+                  ),
                   const SizedBox(height: 16),
-                  Text('No sessions yet',
-                      style: theme.textTheme.headlineSmall?.copyWith(
-                          color: theme.colorScheme.onSurface.withOpacity(0.5))),
+                  Text(
+                    'No sessions yet',
+                    style: theme.textTheme.headlineSmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withOpacity(0.6),
+                    ),
+                  ),
                 ],
               ),
             )
           : ListView.builder(
               itemCount: sessions.length,
               itemBuilder: (context, index) {
-                final s = sessions[index];
-                final active = manager.currentSession?.id == s.id;
+                final session = sessions[index];
+                final isActive = sessionManager.currentSession?.id == session.id;
+
                 return Card(
-                  margin: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 3),
-                  color: active ? theme.colorScheme.primaryContainer : null,
+                  margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  color: isActive ? theme.colorScheme.primaryContainer : null,
                   child: ListTile(
                     leading: CircleAvatar(
-                      backgroundColor: active
-                          ? theme.colorScheme.primary
-                          : theme.colorScheme.surfaceContainerHighest,
                       child: Text(
-                        s.title.isNotEmpty ? s.title[0].toUpperCase() : '?',
+                        session.title[0].toUpperCase(),
                         style: TextStyle(
-                          color: active
-                              ? theme.colorScheme.onPrimary
-                              : theme.colorScheme.onSurfaceContainerHighest,
+                          color: isActive
+                              ? theme.colorScheme.onPrimaryContainer
+                              : theme.colorScheme.onPrimary,
                         ),
                       ),
                     ),
-                    title: Text(s.title,
-                        maxLines: 1, overflow: TextOverflow.ellipsis),
+                    title: Text(
+                      session.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     subtitle: Text(
-                        '${s.messages.length} msgs • ${_fmt(s.updatedAt)}'),
-                    trailing: active
-                        ? Icon(Icons.check_circle,
-                            color: theme.colorScheme.primary)
-                        : IconButton(
+                      '${session.messages.length} messages • ${_formatDate(session.updatedAt)}',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (isActive)
+                          Icon(Icons.check_circle, color: theme.colorScheme.primary)
+                        else
+                          IconButton(
                             icon: const Icon(Icons.delete_outline),
-                            onPressed: () => _confirmDelete(context, s),
+                            onPressed: () {
+                              showDialog(
+                                context: context,
+                                builder: (context) => AlertDialog(
+                                  title: const Text('Delete Session'),
+                                  content: Text('Delete "${session.title}"?'),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context),
+                                      child: const Text('Cancel'),
+                                    ),
+                                    TextButton(
+                                      onPressed: () {
+                                        sessionManager.deleteSession(session.id);
+                                        Navigator.pop(context);
+                                      },
+                                      child: const Text('Delete'),
+                                    ),
+                                  ],
+                                ),
+                              );
+                            },
                           ),
+                      ],
+                    ),
                     onTap: () {
-                      manager.loadSession(s.id);
+                      sessionManager.loadSession(session.id);
                       Navigator.pop(context);
                     },
                   ),
@@ -86,39 +119,18 @@ class SessionsScreen extends StatelessWidget {
     );
   }
 
-  void _confirmDelete(BuildContext context, Session s) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Delete Session'),
-        content: Text('Delete "${s.title}"?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () {
-              context.read<SessionManager>().deleteSession(s.id);
-              Navigator.pop(ctx);
-            },
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _fmt(DateTime d) {
+  String _formatDate(DateTime date) {
     final now = DateTime.now();
-    final diff = now.difference(d);
+    final diff = now.difference(date);
+
     if (diff.inDays == 0) {
-      return 'Today ${d.hour}:${d.minute.toString().padLeft(2, '0')}';
+      return 'Today ${date.hour}:${date.minute.toString().padLeft(2, '0')}';
     } else if (diff.inDays == 1) {
       return 'Yesterday';
     } else if (diff.inDays < 7) {
-      return '${diff.inDays}d ago';
+      return '${diff.inDays} days ago';
+    } else {
+      return '${date.day}/${date.month}/${date.year}';
     }
-    return '${d.day}/${d.month}/${d.year}';
   }
 }

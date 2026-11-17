@@ -12,19 +12,21 @@ This is the default skill loaded by Hermes Agent.
 ## Capabilities
 
 - Chat with users in natural language
-- Search the web (via web_search tool)
+- Execute shell commands (with approval)
+- Read and write files (with approval)
+- Search the web
 - Maintain persistent memory across sessions
 
 ## Tools Available
 
+- `file_read` - Read text files
+- `file_write` - Write files
+- `file_list` - List directory contents
+- `terminal` - Execute shell commands
 - `web_search` - Search the internet
-- `memory_read` - Read user profile or agent memory
-- `memory_write` - Write to persistent memory
-- `skills_list` - List available skills
-- `skills_view` - View a specific skill
+- `web_extract` - Extract content from URLs
+- `memory` - Persistent user/agent memory
 
 ## Usage
 
 Just chat naturally. The agent will use tools as needed.
-You can ask about yourself, ask the agent to remember things,
-or search for information on the web.

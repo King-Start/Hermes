@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
 import 'core/config.dart';
 import 'services/llm_service.dart';
 import 'services/memory_store.dart';
@@ -16,7 +15,7 @@ import 'screens/memory_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Load config first (sync via SharedPreferences)
+  // Initialize services
   final configManager = ConfigManager();
   await configManager.load();
 
@@ -32,14 +31,6 @@ void main() async {
   final toolRegistry = ToolRegistry();
   toolRegistry.registerAll(BuiltInTools.getAll());
 
-  final llmService = LLMService(
-    baseUrl: configManager.config.baseUrl,
-    apiKey: configManager.config.apiKey,
-    model: configManager.config.model,
-    temperature: configManager.config.temperature,
-    maxTokens: configManager.config.maxTokens,
-  );
-
   runApp(
     MultiProvider(
       providers: [
@@ -48,7 +39,15 @@ void main() async {
         ChangeNotifierProvider.value(value: sessionManager),
         ChangeNotifierProvider.value(value: skillManager),
         ChangeNotifierProvider.value(value: toolRegistry),
-        ChangeNotifierProvider.value(value: llmService),
+        ChangeNotifierProvider(
+          create: (_) => LLMService(
+            baseUrl: configManager.config.baseUrl,
+            apiKey: configManager.config.apiKey,
+            model: configManager.config.model,
+            temperature: configManager.config.temperature,
+            maxTokens: configManager.config.maxTokens,
+          ),
+        ),
       ],
       child: const HermesApp(),
     ),
@@ -65,61 +64,24 @@ class HermesApp extends StatelessWidget {
     return MaterialApp(
       title: 'Hermes',
       debugShowCheckedModeBanner: false,
-      theme: _buildTheme(Brightness.light, config),
-      darkTheme: _buildTheme(Brightness.dark, config),
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: config.accentColor,
+          brightness: Brightness.dark,
+        ),
+        useMaterial3: true,
+        fontFamily: 'RobotoMono',
+      ),
+      darkTheme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: config.accentColor,
+          brightness: Brightness.dark,
+        ),
+        useMaterial3: true,
+        fontFamily: 'RobotoMono',
+      ),
       themeMode: ThemeMode.dark,
       home: const MainNavigation(),
-    );
-  }
-
-  ThemeData _buildTheme(Brightness brightness, HermesConfig config) {
-    final scheme = ColorScheme.fromSeed(
-      seedColor: config.accentColor,
-      brightness: brightness,
-    );
-
-    return ThemeData(
-      useMaterial3: true,
-      colorScheme: scheme,
-      scaffoldBackgroundColor: brightness == Brightness.dark
-          ? const Color(0xFF1a1b26)
-          : const Color(0xFFf7f7ff),
-      appBarTheme: AppBarTheme(
-        backgroundColor: brightness == Brightness.dark
-            ? const Color(0xFF16161e)
-            : scheme.surface,
-        foregroundColor: scheme.onSurface,
-        elevation: 0,
-        centerTitle: false,
-      ),
-      cardTheme: CardTheme(
-        color: brightness == Brightness.dark
-            ? const Color(0xFF1f2335)
-            : scheme.surface,
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(
-            color: scheme.outline.withOpacity(0.2),
-          ),
-        ),
-      ),
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: brightness == Brightness.dark
-            ? const Color(0xFF282838)
-            : scheme.surfaceContainerHighest,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
-        ),
-      ),
-      navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: brightness == Brightness.dark
-            ? const Color(0xFF16161e)
-            : scheme.surface,
-        indicatorColor: scheme.primaryContainer,
-      ),
     );
   }
 }
@@ -134,7 +96,7 @@ class MainNavigation extends StatefulWidget {
 class _MainNavigationState extends State<MainNavigation> {
   int _selectedIndex = 0;
 
-  static const _screens = [
+  final _screens = const [
     ChatScreen(),
     SessionsScreen(),
     SkillsScreen(),
@@ -149,7 +111,9 @@ class _MainNavigationState extends State<MainNavigation> {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) {
-          setState(() => _selectedIndex = index);
+          setState(() {
+            _selectedIndex = index;
+          });
         },
         destinations: const [
           NavigationDestination(
@@ -163,17 +127,17 @@ class _MainNavigationState extends State<MainNavigation> {
             label: 'Sessions',
           ),
           NavigationDestination(
-            icon: Icon(Icons.extension_outlined),
+            icon: Icon(Icons.extension),
             selectedIcon: Icon(Icons.extension),
             label: 'Skills',
           ),
           NavigationDestination(
-            icon: Icon(Icons.memory_outlined),
+            icon: Icon(Icons.memory),
             selectedIcon: Icon(Icons.memory),
             label: 'Memory',
           ),
           NavigationDestination(
-            icon: Icon(Icons.settings_outlined),
+            icon: Icon(Icons.settings),
             selectedIcon: Icon(Icons.settings),
             label: 'Settings',
           ),

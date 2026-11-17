@@ -12,11 +12,18 @@ if (localPropertiesFile.exists()) {
     }
 }
 
-def flutterVersionCode = localProperties.getProperty('flutter.versionCode') ?: '1'
-def flutterVersionName = localProperties.getProperty('flutter.versionName') ?: '1.0'
+def flutterVersionCode = localProperties.getProperty('flutter.versionCode')
+if (flutterVersionCode == null) {
+    flutterVersionCode = '1'
+}
+
+def flutterVersionName = localProperties.getProperty('flutter.versionName')
+if (flutterVersionName == null) {
+    flutterVersionName = '1.0'
+}
 
 android {
-    namespace "com.hermes.app"
+    namespace "com.example.hermes"
     compileSdkVersion 34
     ndkVersion flutter.ndkVersion
 
@@ -34,7 +41,7 @@ android {
     }
 
     defaultConfig {
-        applicationId "com.hermes.app"
+        applicationId "com.example.hermes"
         minSdkVersion 21
         targetSdkVersion 34
         versionCode flutterVersionCode.toInteger()

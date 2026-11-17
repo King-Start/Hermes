@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:provider/provider.dart';
-import '../models/models.dart';
-import '../services/llm_service.dart';
-import '../services/storage.dart';
-import '../services/skill_manager.dart';
+import '../../models/chat.dart';
+import '../../services/llm_service.dart';
+import '../../services/session_manager.dart';
+import '../../services/memory_store.dart';
+import '../../services/skill_manager.dart';
+import '../../services/tool_registry.dart';
+import '../../core/config.dart';
+import '../common/empty_state.dart';
+import '../common/tool_call_card.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -29,8 +34,9 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty || _isProcessing) return;
 
-    final llm = context.read<LLMService>();
+    final config = context.read<ConfigManager>().config;
     final sessionManager = context.read<SessionManager>();
+    final llmService = context.read<LLMService>();
     final memoryStore = context.read<MemoryStore>();
     final skillManager = context.read<SkillManager>();
 
@@ -48,12 +54,9 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     sessionManager.addMessage(userMessage);
 
-    // Build context
+    // Build context messages
     final contextMessages = <Map<String, dynamic>>[
-      {
-        'role': 'system',
-        'content': _buildSystemPrompt(memoryStore, skillManager),
-      },
+      {'role': 'system', 'content': _buildSystemPrompt(memoryStore, skillManager)},
     ];
 
     for (final msg in sessionManager.currentSession?.messages ?? []) {
@@ -64,29 +67,35 @@ class _ChatScreenState extends State<ChatScreen> {
 
     // Stream response
     try {
-      final stream = llm.streamChat(contextMessages, null);
+      final stream = llmService.streamChat(contextMessages, null);
+
       await for (final chunk in stream) {
-        if (mounted) {
-          setState(() => _streamingContent += chunk);
-        }
+        setState(() {
+          _streamingContent += chunk;
+        });
+
+        // Scroll to bottom
         if (_scrollController.hasClients) {
           _scrollController.animateTo(
             _scrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 80),
+            duration: const Duration(milliseconds: 100),
             curve: Curves.easeOut,
           );
         }
       }
 
-      if (_streamingContent.isNotEmpty) {
-        sessionManager.addMessage(ChatMessage(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          role: MessageRole.assistant,
-          content: _streamingContent,
-          timestamp: DateTime.now(),
-        ));
-        await sessionManager.saveCurrentSession();
-      }
+      // Add assistant message
+      final assistantMessage = ChatMessage(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        role: MessageRole.assistant,
+        content: _streamingContent,
+        timestamp: DateTime.now(),
+        isStreaming: false,
+      );
+      sessionManager.addMessage(assistantMessage);
+
+      // Save session
+      await sessionManager.saveCurrentSession();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -106,11 +115,11 @@ class _ChatScreenState extends State<ChatScreen> {
 
   String _buildSystemPrompt(MemoryStore memory, SkillManager skills) {
     final buffer = StringBuffer();
-    buffer.writeln('You are Hermes, a capable AI assistant.');
+    buffer.writeln('You are Hermes, a capable AI assistant with access to powerful tools.');
     buffer.writeln('');
     buffer.writeln('## Core Principles');
     buffer.writeln('- Be direct and concise.');
-    buffer.writeln('- Use tools when needed.');
+    buffer.writeln('- Use tools when needed; do not speculate when you can act.');
     buffer.writeln('- No filler text.');
     buffer.writeln('- When unsure, say so plainly.');
     buffer.writeln('');
@@ -129,47 +138,61 @@ class _ChatScreenState extends State<ChatScreen> {
 
     if (skills.skills.isNotEmpty) {
       buffer.writeln('## Available Skills');
-      for (final s in skills.skills) {
-        buffer.writeln('- ${s.name}: ${s.description}');
+      for (final skill in skills.skills) {
+        buffer.writeln('- ${skill.name}: ${skill.description}');
       }
+      buffer.writeln('');
     }
 
     return buffer.toString();
+  }
+
+  void _scrollToBottom() {
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final sessionManager = context.watch<SessionManager>();
-    final session = sessionManager.currentSession;
+    final currentSession = sessionManager.currentSession;
 
     return Scaffold(
+      backgroundColor: theme.colorScheme.surface,
       appBar: AppBar(
-        title: Text(session?.title ?? 'Hermes'),
+        title: Text(currentSession?.title ?? 'New Chat'),
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
             tooltip: 'New Chat',
-            onPressed: () => sessionManager.createSession(),
+            onPressed: () {
+              sessionManager.createSession();
+            },
           ),
           IconButton(
-            icon: const Icon(Icons.delete_sweep),
-            tooltip: 'Clear',
+            icon: const Icon(Icons.delete_outline),
+            tooltip: 'Clear Chat',
             onPressed: () {
               showDialog(
                 context: context,
-                builder: (ctx) => AlertDialog(
+                builder: (context) => AlertDialog(
                   title: const Text('Clear Chat'),
-                  content: const Text('Clear this conversation?'),
+                  content: const Text('Are you sure you want to clear this conversation?'),
                   actions: [
                     TextButton(
-                      onPressed: () => Navigator.pop(ctx),
+                      onPressed: () => Navigator.pop(context),
                       child: const Text('Cancel'),
                     ),
-                    FilledButton(
+                    TextButton(
                       onPressed: () {
                         sessionManager.clearCurrentSession();
-                        Navigator.pop(ctx);
+                        Navigator.pop(context);
                       },
                       child: const Text('Clear'),
                     ),
@@ -183,19 +206,21 @@ class _ChatScreenState extends State<ChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child: session == null || session.messages.isEmpty
-                ? _buildEmptyState(context)
+            child: currentSession == null || currentSession.messages.isEmpty
+                ? const EmptyState()
                 : ListView.builder(
                     controller: _scrollController,
-                    padding: const EdgeInsets.all(12),
-                    itemCount: session.messages.length +
+                    padding: const EdgeInsets.all(16),
+                    itemCount: currentSession.messages.length +
                         (_streamingContent.isNotEmpty ? 1 : 0),
                     itemBuilder: (context, index) {
-                      if (index < session.messages.length) {
-                        return _buildMessage(
-                            context, session.messages[index]);
+                      if (index < currentSession.messages.length) {
+                        final message = currentSession.messages[index];
+                        return _buildMessage(context, message);
+                      } else {
+                        // Streaming message
+                        return _buildStreamingMessage(context);
                       }
-                      return _buildStreamingBubble(context);
                     },
                   ),
           ),
@@ -205,44 +230,17 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildEmptyState(BuildContext context) {
+  Widget _buildMessage(BuildContext context, ChatMessage message) {
+    final isUser = message.role == MessageRole.user;
     final theme = Theme.of(context);
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.psychology_outlined,
-              size: 72, color: theme.colorScheme.primary.withOpacity(0.4)),
-          const SizedBox(height: 16),
-          Text(
-            'Start a conversation',
-            style: theme.textTheme.headlineSmall?.copyWith(
-              color: theme.colorScheme.onSurface.withOpacity(0.5),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Type a message below to begin',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurface.withOpacity(0.3),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildMessage(BuildContext context, ChatMessage msg) {
-    final theme = Theme.of(context);
-    final isUser = msg.role == MessageRole.user;
 
     return Align(
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 3),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.88,
+          maxWidth: MediaQuery.of(context).size.width * 0.85,
         ),
         decoration: BoxDecoration(
           color: isUser
@@ -258,15 +256,15 @@ class _ChatScreenState extends State<ChatScreen> {
               children: [
                 Icon(
                   isUser ? Icons.person : Icons.psychology,
-                  size: 14,
+                  size: 16,
                   color: isUser
                       ? theme.colorScheme.onPrimaryContainer
                       : theme.colorScheme.onSurfaceContainerHighest,
                 ),
-                const SizedBox(width: 6),
+                const SizedBox(width: 8),
                 Text(
                   isUser ? 'You' : 'Hermes',
-                  style: theme.textTheme.labelSmall?.copyWith(
+                  style: theme.textTheme.labelLarge?.copyWith(
                     fontWeight: FontWeight.bold,
                     color: isUser
                         ? theme.colorScheme.onPrimaryContainer
@@ -275,18 +273,15 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
               ],
             ),
-            const SizedBox(vertical: 3),
+            const SizedBox(height: 4),
             MarkdownBody(
-              data: msg.content,
+              data: message.content,
               selectable: false,
               styleSheet: MarkdownStyleSheet(
                 p: theme.textTheme.bodyMedium?.copyWith(
                   color: isUser
                       ? theme.colorScheme.onPrimaryContainer
                       : theme.colorScheme.onSurfaceContainerHighest,
-                ),
-                code: theme.textTheme.bodySmall?.copyWith(
-                  backgroundColor: theme.colorScheme.surface,
                 ),
               ),
             ),
@@ -296,15 +291,16 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildStreamingBubble(BuildContext context) {
+  Widget _buildStreamingMessage(BuildContext context) {
     final theme = Theme.of(context);
+
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
-        margin: const EdgeInsets.symmetric(vertical: 3),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.88,
+          maxWidth: MediaQuery.of(context).size.width * 0.85,
         ),
         decoration: BoxDecoration(
           color: theme.colorScheme.surfaceContainerHighest,
@@ -313,18 +309,23 @@ class _ChatScreenState extends State<ChatScreen> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.psychology,
-                size: 14, color: theme.colorScheme.onSurfaceContainerHighest),
-            const SizedBox(width: 6),
-            Text('Hermes',
-                style: theme.textTheme.labelSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.onSurfaceContainerHighest,
-                )),
+            Icon(
+              Icons.psychology,
+              size: 16,
+              color: theme.colorScheme.onSurfaceContainerHighest,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Hermes',
+              style: theme.textTheme.labelLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: theme.colorScheme.onSurfaceContainerHighest,
+              ),
+            ),
             const SizedBox(width: 8),
             SizedBox(
-              width: 14,
-              height: 14,
+              width: 16,
+              height: 16,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
                 color: theme.colorScheme.onSurfaceContainerHighest,
@@ -338,49 +339,85 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildInputBar(BuildContext context) {
     final theme = Theme.of(context);
+
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
         color: theme.colorScheme.surface,
         border: Border(
-          top: BorderSide(color: theme.colorScheme.outline.withOpacity(0.1)),
+          top: BorderSide(
+            color: theme.colorScheme.outline.withOpacity(0.2),
+          ),
         ),
       ),
-      child: SafeArea(
-        child: Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _inputController,
-                decoration: InputDecoration(
-                  hintText: 'Type a message...',
-                  filled: true,
-                  fillColor: theme.colorScheme.surfaceContainerHighest,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                    borderSide: BorderSide.none,
-                  ),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _inputController,
+              decoration: InputDecoration(
+                hintText: 'Type a message...',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(24),
                 ),
-                maxLines: null,
-                textCapitalization: TextCapitalization.sentences,
-                onSubmitted: _isProcessing ? null : _sendMessage,
+                filled: true,
+                fillColor: theme.colorScheme.surfaceContainerHighest,
               ),
+              maxLines: null,
+              textCapitalization: TextCapitalization.sentences,
+              onSubmitted: _isProcessing ? null : _sendMessage,
             ),
-            const SizedBox(width: 8),
-            IconButton.filled(
-              onPressed: _isProcessing
-                  ? null
-                  : () => _sendMessage(_inputController.text),
-              icon: _isProcessing
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.send),
+          ),
+          const SizedBox(width: 8),
+          IconButton.filled(
+            onPressed: _isProcessing
+                ? null
+                : () => _sendMessage(_inputController.text),
+            icon: _isProcessing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.send),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class EmptyState extends StatelessWidget {
+  const EmptyState({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.psychology_outlined,
+            size: 64,
+            color: theme.colorScheme.primary.withOpacity(0.5),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Start a conversation',
+            style: theme.textTheme.headlineSmall?.copyWith(
+              color: theme.colorScheme.onSurface.withOpacity(0.6),
             ),
-          ],
-        ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Type a message below to begin',
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurface.withOpacity(0.4),
+            ),
+          ),
+        ],
       ),
     );
   }

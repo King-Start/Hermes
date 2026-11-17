@@ -10,28 +10,31 @@ class SkillsScreen extends StatefulWidget {
 }
 
 class _SkillsScreenState extends State<SkillsScreen> {
-  String _search = '';
-  String? _category;
+  String? _selectedCategory;
+  String _searchQuery = '';
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final manager = context.watch<SkillManager>();
+    final skillManager = context.watch<SkillManager>();
 
-    var skills = manager.skills;
-    if (_category != null) {
-      skills = skills.where((s) => s.category == _category).toList();
+    var skills = skillManager.skills;
+
+    // Filter by category
+    if (_selectedCategory != null && _selectedCategory!.isNotEmpty) {
+      skills = skills.where((s) => s.category == _selectedCategory).toList();
     }
-    if (_search.isNotEmpty) {
-      final q = _search.toLowerCase();
+
+    // Filter by search
+    if (_searchQuery.isNotEmpty) {
       skills = skills
           .where((s) =>
-              s.name.toLowerCase().contains(q) ||
-              s.description.toLowerCase().contains(q))
+              s.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
+              s.description.toLowerCase().contains(_searchQuery.toLowerCase()))
           .toList();
     }
 
-    final categories = manager.getCategories();
+    final categories = skillManager.getCategories();
 
     return Scaffold(
       appBar: AppBar(
@@ -40,94 +43,121 @@ class _SkillsScreenState extends State<SkillsScreen> {
           IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
-            onPressed: () => manager.init(),
+            onPressed: () {
+              skillManager.init();
+            },
           ),
         ],
       ),
       body: Column(
         children: [
+          // Search bar
           Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(16),
             child: TextField(
               decoration: const InputDecoration(
                 hintText: 'Search skills...',
                 prefixIcon: Icon(Icons.search),
-                filled: true,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(12)),
-                  borderSide: BorderSide.none,
-                ),
+                border: OutlineInputBorder(),
               ),
-              onChanged: (v) => setState(() => _search = v),
+              onChanged: (value) {
+                setState(() {
+                  _searchQuery = value;
+                });
+              },
             ),
           ),
+
+          // Category filter
           if (categories.isNotEmpty)
             SizedBox(
-              height: 44,
+              height: 48,
               child: ListView(
                 scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 children: [
                   FilterChip(
                     label: const Text('All'),
-                    selected: _category == null,
-                    onSelected: (_) => setState(() => _category = null),
+                    selected: _selectedCategory == null,
+                    onSelected: (selected) {
+                      setState(() {
+                        _selectedCategory = selected ? null : null;
+                      });
+                    },
                   ),
-                  ...categories.map((c) => FilterChip(
-                        label: Text(c),
-                        selected: _category == c,
-                        onSelected: (sel) =>
-                            setState(() => _category = sel ? c : null),
-                      )),
+                  ...categories.map(
+                    (category) => FilterChip(
+                      label: Text(category),
+                      selected: _selectedCategory == category,
+                      onSelected: (selected) {
+                        setState(() {
+                          _selectedCategory = selected ? category : null;
+                        });
+                      },
+                    ),
+                  ),
                 ],
               ),
             ),
+
+          // Skills list
           Expanded(
             child: skills.isEmpty
                 ? Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.extension_outlined,
-                            size: 64,
-                            color: theme.colorScheme.primary.withOpacity(0.4)),
+                        Icon(
+                          Icons.extension,
+                          size: 64,
+                          color: theme.colorScheme.primary.withOpacity(0.5),
+                        ),
                         const SizedBox(height: 16),
-                        Text('No skills found',
-                            style: theme.textTheme.headlineSmall?.copyWith(
-                                color: theme.colorScheme.onSurface
-                                    .withOpacity(0.5))),
+                        Text(
+                          'No skills found',
+                          style: theme.textTheme.headlineSmall?.copyWith(
+                            color: theme.colorScheme.onSurface.withOpacity(0.6),
+                          ),
+                        ),
                       ],
                     ),
                   )
                 : ListView.builder(
                     itemCount: skills.length,
                     itemBuilder: (context, index) {
-                      final s = skills[index];
+                      final skill = skills[index];
+
                       return Card(
                         margin: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 3),
+                            horizontal: 16, vertical: 4),
                         child: ExpansionTile(
-                          leading: Icon(_icon(s.category),
-                              color: theme.colorScheme.primary),
-                          title: Text(s.name),
+                          leading: Icon(
+                            _getCategoryIcon(skill.category),
+                            color: theme.colorScheme.primary,
+                          ),
+                          title: Text(skill.name),
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(s.description,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis),
+                              Text(
+                                skill.description,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
                               const SizedBox(height: 4),
-                              Row(children: [
-                                Chip(
-                                  label: Text(s.category),
-                                  visualDensity: VisualDensity.compact,
-                                ),
-                                const SizedBox(width: 4),
-                                Chip(
-                                  label: Text('v${s.version}'),
-                                  visualDensity: VisualDensity.compact,
-                                ),
-                              ]),
+                              Row(
+                                children: [
+                                  Chip(
+                                    label: Text(skill.category),
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Chip(
+                                    label: Text('v${skill.version}'),
+                                    visualDensity: VisualDensity.compact,
+                                  ),
+                                ],
+                              ),
                             ],
                           ),
                           children: [
@@ -136,12 +166,31 @@ class _SkillsScreenState extends State<SkillsScreen> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text('Content',
-                                      style: theme.textTheme.titleSmall),
+                                  Text(
+                                    'Content',
+                                    style: theme.textTheme.titleSmall,
+                                  ),
                                   const SizedBox(height: 8),
-                                  SelectableText(s.content,
-                                      style: theme.textTheme.bodySmall
-                                          ?.copyWith(fontFamily: 'monospace')),
+                                  SelectableText(
+                                    skill.content,
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      fontFamily: 'monospace',
+                                    ),
+                                  ),
+                                  if (skill.tools.isNotEmpty) ...[
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      'Tools',
+                                      style: theme.textTheme.titleSmall,
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Wrap(
+                                      spacing: 8,
+                                      children: skill.tools
+                                          .map((tool) => Chip(label: Text(tool)))
+                                          .toList(),
+                                    ),
+                                  ],
                                 ],
                               ),
                             ),
@@ -156,12 +205,16 @@ class _SkillsScreenState extends State<SkillsScreen> {
     );
   }
 
-  IconData _icon(String cat) {
-    switch (cat.toLowerCase()) {
-      case 'research': return Icons.search;
-      case 'coding': return Icons.code;
-      case 'general': return Icons.psychology;
-      default: return Icons.extension;
+  IconData _getCategoryIcon(String category) {
+    switch (category.toLowerCase()) {
+      case 'research':
+        return Icons.search;
+      case 'coding':
+        return Icons.code;
+      case 'general':
+        return Icons.psychology;
+      default:
+        return Icons.extension;
     }
   }
 }
