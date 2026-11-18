@@ -69,12 +69,12 @@ class ChatMessage extends Equatable {
 
   /// Convert to OpenAI API format
   Map<String, dynamic> toOpenAiFormat() {
-    final base = {'role': role.name, 'content': content};
+    final base = <String, dynamic>{'role': role.name, 'content': content};
     if (toolCallId != null) {
-      base['tool_call_id'] = toolCallId;
+      base['tool_call_id'] = toolCallId!;
     }
     if (toolName != null) {
-      base['tool_calls'] = [
+      base['tool_calls'] = <Map<String, dynamic>>[
         {
           'id': toolCallId,
           'type': 'function',

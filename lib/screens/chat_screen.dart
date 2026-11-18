@@ -6,10 +6,7 @@ import '../../services/llm_service.dart';
 import '../../services/session_manager.dart';
 import '../../services/memory_store.dart';
 import '../../services/skill_manager.dart';
-import '../../services/tool_registry.dart';
 import '../../core/config.dart';
-import '../common/empty_state.dart';
-import '../common/tool_call_card.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -34,7 +31,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _sendMessage(String text) async {
     if (text.trim().isEmpty || _isProcessing) return;
 
-    final config = context.read<ConfigManager>().config;
+    final config = context.read<ConfigManager>().config; // ignore: unused_local_variable
     final sessionManager = context.read<SessionManager>();
     final llmService = context.read<LLMService>();
     final memoryStore = context.read<MemoryStore>();
@@ -147,7 +144,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return buffer.toString();
   }
 
-  void _scrollToBottom() {
+  void _scrollToBottom() { // ignore: unused_element
     if (_scrollController.hasClients) {
       _scrollController.animateTo(
         _scrollController.position.maxScrollExtent,
@@ -259,7 +256,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   size: 16,
                   color: isUser
                       ? theme.colorScheme.onPrimaryContainer
-                      : theme.colorScheme.onSurfaceContainerHighest,
+                      : theme.colorScheme.onSurface,
                 ),
                 const SizedBox(width: 8),
                 Text(
@@ -268,7 +265,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     fontWeight: FontWeight.bold,
                     color: isUser
                         ? theme.colorScheme.onPrimaryContainer
-                        : theme.colorScheme.onSurfaceContainerHighest,
+                        : theme.colorScheme.onSurface,
                   ),
                 ),
               ],
@@ -281,7 +278,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 p: theme.textTheme.bodyMedium?.copyWith(
                   color: isUser
                       ? theme.colorScheme.onPrimaryContainer
-                      : theme.colorScheme.onSurfaceContainerHighest,
+                      : theme.colorScheme.onSurface,
                 ),
               ),
             ),
@@ -312,14 +309,14 @@ class _ChatScreenState extends State<ChatScreen> {
             Icon(
               Icons.psychology,
               size: 16,
-              color: theme.colorScheme.onSurfaceContainerHighest,
+              color: theme.colorScheme.onSurface,
             ),
             const SizedBox(width: 8),
             Text(
               'Hermes',
               style: theme.textTheme.labelLarge?.copyWith(
                 fontWeight: FontWeight.bold,
-                color: theme.colorScheme.onSurfaceContainerHighest,
+                color: theme.colorScheme.onSurface,
               ),
             ),
             const SizedBox(width: 8),
@@ -328,7 +325,7 @@ class _ChatScreenState extends State<ChatScreen> {
               height: 16,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
-                color: theme.colorScheme.onSurfaceContainerHighest,
+                color: theme.colorScheme.onSurface,
               ),
             ),
           ],

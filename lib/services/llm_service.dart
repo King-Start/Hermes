@@ -46,10 +46,10 @@ class LLMService extends ChangeNotifier {
       };
 
       final request = http.Request('POST', uri)
-        ..headers = {
+        ..headers.addAll({
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $apiKey',
-        }
+        })
         ..body = jsonEncode(body);
 
       final response = await http.Client().send(request);
@@ -64,7 +64,7 @@ class LLMService extends ChangeNotifier {
           .transform(utf8.decoder)
           .transform(const LineSplitter());
 
-      String fullContent = '';
+      String fullContent = ''; // ignore: unused_local_variable
 
       await for (final line in stream) {
         if (line.isEmpty) continue;

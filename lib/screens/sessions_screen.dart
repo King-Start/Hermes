@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../services/session_manager.dart';
-import '../models/chat.dart';
 
 class SessionsScreen extends StatelessWidget {
   const SessionsScreen({super.key});

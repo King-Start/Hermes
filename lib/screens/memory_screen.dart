@@ -23,7 +23,7 @@ class _MemoryScreenState extends State<MemoryScreen>
   }
 
   void _loadMemory() {
-    final memory = context.read<MemoryStore>();
+    final memory = context.read<MemoryStore>(); // ignore: unused_local_variable
     _userController.text = memory.userProfile;
     _agentController.text = memory.agentMemory;
   }

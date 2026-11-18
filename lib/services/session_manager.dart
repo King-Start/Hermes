@@ -108,7 +108,7 @@ class SessionManager extends ChangeNotifier {
     }
 
     final messages = List<ChatMessage>.from(_currentSession!.messages);
-    messages.append(message);
+    messages.add(message);
     _currentSession = _currentSession!.copyWith(
       messages: messages,
       updatedAt: DateTime.now(),
