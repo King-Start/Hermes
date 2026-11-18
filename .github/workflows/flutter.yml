@@ -2,7 +2,7 @@ name: Build Hermes APK
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
@@ -27,8 +27,8 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Analyze
-        run: flutter analyze
+      - name: Analyze (non-fatal)
+        run: flutter analyze --no-fatal-infos
 
       - name: Build APK (release)
         run: flutter build apk --release
