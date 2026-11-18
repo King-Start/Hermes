@@ -220,7 +220,6 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final sessionManager = context.watch<SessionManager>();
     final session = sessionManager.currentSession;
 

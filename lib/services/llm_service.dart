@@ -60,10 +60,10 @@ class LLMService extends ChangeNotifier {
       };
 
       final request = http.Request('POST', uri)
-        ..headers = {
+        ..headers.addAll({
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $apiKey',
-        }
+        })
         ..body = jsonEncode(body);
 
       final streamedResponse = await http.Client().send(request);

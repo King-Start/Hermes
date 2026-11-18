@@ -94,18 +94,6 @@ class HermesApp extends StatelessWidget {
         elevation: 0,
         centerTitle: false,
       ),
-      cardTheme: CardThemeData(
-        color: brightness == Brightness.dark
-            ? const Color(0xFF1f2335)
-            : scheme.surface,
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-          side: BorderSide(
-            color: scheme.outline.withOpacity(0.2),
-          ),
-        ),
-      ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: brightness == Brightness.dark
