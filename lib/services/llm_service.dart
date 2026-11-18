@@ -1,16 +1,15 @@
-import 'dart:convert';
 import 'dart:async';
-import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import '../models/chat.dart';
+import 'package:http/http.dart' as http;
+import '../models/models.dart';
 
-/// LLM Service - OpenAI-compatible API client
 class LLMService extends ChangeNotifier {
-  final String baseUrl;
-  final String apiKey;
-  final String model;
-  final double temperature;
-  final int maxTokens;
+  String baseUrl;
+  String apiKey;
+  String model;
+  double temperature;
+  int maxTokens;
 
   LLMService({
     required this.baseUrl,
@@ -23,7 +22,22 @@ class LLMService extends ChangeNotifier {
   bool _isBusy = false;
   bool get isBusy => _isBusy;
 
-  /// Chat completion with streaming
+  void updateConfig({
+    String? baseUrl,
+    String? apiKey,
+    String? model,
+    double? temperature,
+    int? maxTokens,
+  }) {
+    this.baseUrl = baseUrl ?? this.baseUrl;
+    this.apiKey = apiKey ?? this.apiKey;
+    this.model = model ?? this.model;
+    this.temperature = temperature ?? this.temperature;
+    this.maxTokens = maxTokens ?? this.maxTokens;
+    notifyListeners();
+  }
+
+  /// Stream chat response. Yields text chunks.
   Stream<String> streamChat(
     List<Map<String, dynamic>> messages,
     List<Map<String, dynamic>>? tools,
@@ -32,7 +46,7 @@ class LLMService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final uri = Uri.parse('$baseUrl/chat/completions');
+      final uri = Uri.parse('${baseUrl.replaceAll(RegExp(r'/+$'), '')}/chat/completions');
       final body = <String, dynamic>{
         'model': model,
         'messages': messages,
@@ -46,25 +60,23 @@ class LLMService extends ChangeNotifier {
       };
 
       final request = http.Request('POST', uri)
-        ..headers.addAll({
+        ..headers = {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $apiKey',
-        })
+        }
         ..body = jsonEncode(body);
 
-      final response = await http.Client().send(request);
+      final streamedResponse = await http.Client().send(request);
 
-      if (response.statusCode != 200) {
-        final errorBody = await response.stream.bytesToString();
-        yield '**Error:** HTTP ${response.statusCode} - $errorBody';
+      if (streamedResponse.statusCode != 200) {
+        final errorBody = await streamedResponse.stream.bytesToString();
+        yield '**Error ${streamedResponse.statusCode}:** $errorBody';
         return;
       }
 
-      final stream = response.stream
+      final stream = streamedResponse.stream
           .transform(utf8.decoder)
           .transform(const LineSplitter());
-
-      String fullContent = ''; // ignore: unused_local_variable
 
       await for (final line in stream) {
         if (line.isEmpty) continue;
@@ -80,20 +92,13 @@ class LLMService extends ChangeNotifier {
             final delta = choices[0]['delta'] as Map<String, dynamic>?;
             if (delta != null) {
               final content = delta['content'] as String?;
-              if (content != null) {
-                fullContent += content;
+              if (content != null && content.isNotEmpty) {
                 yield content;
-              }
-
-              // Handle tool calls in streaming
-              final toolCalls = delta['tool_calls'] as List?;
-              if (toolCalls != null && toolCalls.isNotEmpty) {
-                // Tool calls will be handled by the agent
               }
             }
           }
-        } catch (e) {
-          debugPrint('Error parsing stream chunk: $e');
+        } catch (_) {
+          // Skip malformed chunks
         }
       }
     } catch (e) {
@@ -104,7 +109,7 @@ class LLMService extends ChangeNotifier {
     }
   }
 
-  /// Non-streaming chat completion
+  /// Non-streaming chat. Returns full response with optional tool calls.
   Future<ChatResponse> chat(
     List<Map<String, dynamic>> messages,
     List<Map<String, dynamic>>? tools,
@@ -113,7 +118,7 @@ class LLMService extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final uri = Uri.parse('$baseUrl/chat/completions');
+      final uri = Uri.parse('${baseUrl.replaceAll(RegExp(r'/+$'), '')}/chat/completions');
       final body = <String, dynamic>{
         'model': model,
         'messages': messages,
@@ -151,26 +156,13 @@ class LLMService extends ChangeNotifier {
             : null,
         finishReason: choices[0]['finish_reason'] as String? ?? 'stop',
       );
-    } catch (e) {
-      throw Exception('Chat error: $e');
     } finally {
       _isBusy = false;
       notifyListeners();
     }
   }
-
-  /// Count tokens (approximate)
-  int countTokens(List<Map<String, dynamic>> messages) {
-    int total = 0;
-    for (final msg in messages) {
-      final content = msg['content'] as String? ?? '';
-      total += (content.length / 4).ceil(); // Rough estimate
-    }
-    return total;
-  }
 }
 
-/// Chat response model
 class ChatResponse {
   final String? content;
   final List<ToolCall>? toolCalls;

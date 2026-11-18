@@ -79,6 +79,29 @@ class SessionManager extends ChangeNotifier {
 
   static const String _sessionDir = 'sessions';
 
+  String _shortTitle(String s) {
+    final t = s.replaceAll('\n', ' ').trim();
+    return t.length > 40 ? '${t.substring(0, 40)}...' : t;
+  }
+
+  /// Keep the in-memory list in sync with the current session.
+  void _sync() {
+    final s = _currentSession;
+    if (s == null) return;
+    final i = _sessions.indexWhere((e) => e.id == s.id);
+    if (i == -1) {
+      _sessions.insert(0, s);
+    } else {
+      _sessions[i] = s;
+    }
+  }
+
+  @override
+  void notifyListeners() {
+    _sync();
+    super.notifyListeners();
+  }
+
   Future<void> init() async {
     try {
       final dir = await _getSessionDir();
@@ -160,8 +183,11 @@ class SessionManager extends ChangeNotifier {
     if (_currentSession == null) createSession();
 
     final messages = List<ChatMessage>.from(_currentSession!.messages);
-    messages.append(message);
+    final first = message.role == MessageRole.user &&
+        _currentSession!.title == 'New Chat';
+    messages.add(message);
     _currentSession = _currentSession!.copyWith(
+      title: first ? _shortTitle(message.content) : null,
       messages: messages,
       updatedAt: DateTime.now(),
     );

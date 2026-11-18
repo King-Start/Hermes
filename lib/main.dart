@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import 'core/config.dart';
+import 'core/nav.dart';
 import 'services/llm_service.dart';
-import 'services/memory_store.dart';
-import 'services/session_manager.dart';
+import 'services/storage.dart';
 import 'services/skill_manager.dart';
 import 'services/tool_registry.dart';
 import 'screens/chat_screen.dart';
@@ -15,7 +16,7 @@ import 'screens/memory_screen.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize services
+  // Load config first (sync via SharedPreferences)
   final configManager = ConfigManager();
   await configManager.load();
 
@@ -29,7 +30,17 @@ void main() async {
   await skillManager.init();
 
   final toolRegistry = ToolRegistry();
-  toolRegistry.registerAll(BuiltInTools.getAll());
+  toolRegistry.registerAll(
+    BuiltInTools.getAll(memory: memoryStore, skills: skillManager),
+  );
+
+  final llmService = LLMService(
+    baseUrl: configManager.config.baseUrl,
+    apiKey: configManager.config.apiKey,
+    model: configManager.config.model,
+    temperature: configManager.config.temperature,
+    maxTokens: configManager.config.maxTokens,
+  );
 
   runApp(
     MultiProvider(
@@ -39,15 +50,7 @@ void main() async {
         ChangeNotifierProvider.value(value: sessionManager),
         ChangeNotifierProvider.value(value: skillManager),
         ChangeNotifierProvider.value(value: toolRegistry),
-        ChangeNotifierProvider(
-          create: (_) => LLMService(
-            baseUrl: configManager.config.baseUrl,
-            apiKey: configManager.config.apiKey,
-            model: configManager.config.model,
-            temperature: configManager.config.temperature,
-            maxTokens: configManager.config.maxTokens,
-          ),
-        ),
+        ChangeNotifierProvider.value(value: llmService),
       ],
       child: const HermesApp(),
     ),
@@ -64,24 +67,61 @@ class HermesApp extends StatelessWidget {
     return MaterialApp(
       title: 'Hermes',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: config.accentColor,
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-        fontFamily: 'RobotoMono',
-      ),
-      darkTheme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: config.accentColor,
-          brightness: Brightness.dark,
-        ),
-        useMaterial3: true,
-        fontFamily: 'RobotoMono',
-      ),
+      theme: _buildTheme(Brightness.light, config),
+      darkTheme: _buildTheme(Brightness.dark, config),
       themeMode: ThemeMode.dark,
       home: const MainNavigation(),
+    );
+  }
+
+  ThemeData _buildTheme(Brightness brightness, HermesConfig config) {
+    final scheme = ColorScheme.fromSeed(
+      seedColor: config.accentColor,
+      brightness: brightness,
+    );
+
+    return ThemeData(
+      useMaterial3: true,
+      colorScheme: scheme,
+      scaffoldBackgroundColor: brightness == Brightness.dark
+          ? const Color(0xFF1a1b26)
+          : const Color(0xFFf7f7ff),
+      appBarTheme: AppBarTheme(
+        backgroundColor: brightness == Brightness.dark
+            ? const Color(0xFF16161e)
+            : scheme.surface,
+        foregroundColor: scheme.onSurface,
+        elevation: 0,
+        centerTitle: false,
+      ),
+      cardTheme: CardThemeData(
+        color: brightness == Brightness.dark
+            ? const Color(0xFF1f2335)
+            : scheme.surface,
+        elevation: 0,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+          side: BorderSide(
+            color: scheme.outline.withOpacity(0.2),
+          ),
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: brightness == Brightness.dark
+            ? const Color(0xFF282838)
+            : scheme.surfaceContainerHighest,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide.none,
+        ),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: brightness == Brightness.dark
+            ? const Color(0xFF16161e)
+            : scheme.surface,
+        indicatorColor: scheme.primaryContainer,
+      ),
     );
   }
 }
@@ -96,7 +136,21 @@ class MainNavigation extends StatefulWidget {
 class _MainNavigationState extends State<MainNavigation> {
   int _selectedIndex = 0;
 
-  final _screens = const [
+  @override
+  void initState() {
+    super.initState();
+    tabIndex.addListener(_onTab);
+  }
+
+  void _onTab() => setState(() => _selectedIndex = tabIndex.value);
+
+  @override
+  void dispose() {
+    tabIndex.removeListener(_onTab);
+    super.dispose();
+  }
+
+  static const List<Widget> _screens = [
     ChatScreen(),
     SessionsScreen(),
     SkillsScreen(),
@@ -107,13 +161,11 @@ class _MainNavigationState extends State<MainNavigation> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _screens[_selectedIndex],
+      body: IndexedStack(index: _selectedIndex, children: _screens),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
+          tabIndex.value = index;
         },
         destinations: const [
           NavigationDestination(
@@ -127,17 +179,17 @@ class _MainNavigationState extends State<MainNavigation> {
             label: 'Sessions',
           ),
           NavigationDestination(
-            icon: Icon(Icons.extension),
+            icon: Icon(Icons.extension_outlined),
             selectedIcon: Icon(Icons.extension),
             label: 'Skills',
           ),
           NavigationDestination(
-            icon: Icon(Icons.memory),
+            icon: Icon(Icons.memory_outlined),
             selectedIcon: Icon(Icons.memory),
             label: 'Memory',
           ),
           NavigationDestination(
-            icon: Icon(Icons.settings),
+            icon: Icon(Icons.settings_outlined),
             selectedIcon: Icon(Icons.settings),
             label: 'Settings',
           ),

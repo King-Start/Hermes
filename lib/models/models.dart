@@ -66,7 +66,7 @@ class ChatMessage {
       };
 
   Map<String, dynamic> toOpenAiFormat() {
-    final base = {'role': role.name, 'content': content};
+    final base = <String, dynamic>{'role': role.name, 'content': content};
     if (toolCallId != null) {
       base['tool_call_id'] = toolCallId!;
     }
@@ -103,13 +103,21 @@ class ToolCall {
     required this.arguments,
   });
 
+  static Map<String, dynamic> _parseArgs(dynamic raw) {
+    if (raw is Map) return Map<String, dynamic>.from(raw);
+    if (raw is String && raw.trim().isNotEmpty) {
+      try {
+        return Map<String, dynamic>.from(jsonDecode(raw) as Map);
+      } catch (_) {}
+    }
+    return <String, dynamic>{};
+  }
+
   factory ToolCall.fromJson(Map<String, dynamic> json) {
     return ToolCall(
       id: json['id'] as String,
       name: json['function']['name'] as String,
-      arguments: json['function']['arguments'] != null
-          ? jsonDecode(json['function']['arguments'] as String) as Map<String, dynamic>
-          : {},
+      arguments: _parseArgs(json['function']['arguments']),
     );
   }
 

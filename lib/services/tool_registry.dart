@@ -1,57 +1,48 @@
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'shell.dart';
+import 'skill_manager.dart';
+import 'storage.dart';
 
-/// Tool parameter definition
 class ToolParameter {
   final String name;
   final String type;
   final String description;
   final bool required;
-  final dynamic defaultValue;
 
   const ToolParameter({
     required this.name,
     required this.type,
     required this.description,
     this.required = true,
-    this.defaultValue,
   });
 
-  Map<String, dynamic> toJsonSchema() {
-    final schema = <String, dynamic>{
-      'type': type,
-      'description': description,
-    };
-    if (defaultValue != null) {
-      schema['default'] = defaultValue;
-    }
-    return schema;
-  }
+  Map<String, dynamic> toJsonSchema() => {
+        'type': type,
+        'description': description,
+      };
 }
 
-/// Tool definition
 class Tool {
   final String name;
   final String description;
   final List<ToolParameter> parameters;
-  final Function(Map<String, dynamic>) onExecute;
+  final Future<dynamic> Function(Map<String, dynamic>)? onExecute;
 
   const Tool({
     required this.name,
     required this.description,
     this.parameters = const [],
-    required this.onExecute,
+    this.onExecute,
   });
 
-  /// Convert to OpenAI function format
   Map<String, dynamic> toOpenAiFunction() {
     final properties = <String, dynamic>{};
     final required = <String>[];
 
     for (final param in parameters) {
       properties[param.name] = param.toJsonSchema();
-      if (param.required) {
-        required.add(param.name);
-      }
+      if (param.required) required.add(param.name);
     }
 
     return {
@@ -68,230 +59,137 @@ class Tool {
     };
   }
 
-  /// Execute the tool with given arguments
   Future<dynamic> execute(Map<String, dynamic> args) async {
-    return await onExecute(args);
+    if (onExecute != null) return await onExecute!(args);
+    return 'Tool "$name" executed with args: $args';
   }
 }
 
-/// Tool registry
 class ToolRegistry extends ChangeNotifier {
   final Map<String, Tool> _tools = {};
   Map<String, Tool> get tools => Map.unmodifiable(_tools);
   List<String> get toolNames => _tools.keys.toList();
+  int get length => _tools.length;
 
-  /// Register a tool
   void register(Tool tool) {
     _tools[tool.name] = tool;
     notifyListeners();
   }
 
-  /// Register multiple tools
   void registerAll(List<Tool> tools) {
-    for (final tool in tools) {
-      _tools[tool.name] = tool;
-    }
+    for (final t in tools) _tools[t.name] = t;
     notifyListeners();
   }
 
-  /// Get tool by name
   Tool? getTool(String name) => _tools[name];
 
-  /// Check if tool exists
-  bool hasTool(String name) => _tools.containsKey(name);
-
-  /// Remove tool
-  void unregister(String name) {
-    _tools.remove(name);
-    notifyListeners();
-  }
-
-  /// Get all tools as OpenAI format
   List<Map<String, dynamic>> toOpenAiTools() {
     return _tools.values.map((t) => t.toOpenAiFunction()).toList();
   }
 
-  /// Execute tool by name
   Future<dynamic> executeTool(String name, Map<String, dynamic> args) async {
     final tool = _tools[name];
-    if (tool == null) {
-      throw Exception('Tool not found: $name');
-    }
+    if (tool == null) throw Exception('Tool not found: $name');
     return await tool.execute(args);
   }
 
-  /// Clear all tools
   void clear() {
     _tools.clear();
     notifyListeners();
   }
-
-  /// Get tool count
-  int get length => _tools.length;
 }
 
-/// Built-in tools factory
 class BuiltInTools {
-  static List<Tool> getAll() {
-    return [
-      _createFileReadTool(),
-      _createFileWriteTool(),
-      _createFileListTool(),
-      _createTerminalTool(),
-      _createWebSearchTool(),
-      _createMemoryTool(),
-      _createSkillTool(),
-    ];
-  }
-
-  static Tool _createFileReadTool() {
-    return Tool(
-      name: 'file_read',
-      description: 'Read the contents of a text file',
-      parameters: [
-        ToolParameter(
-          name: 'path',
-          type: 'string',
-          description: 'File path to read',
-          required: true,
+  static List<Tool> getAll({
+    required MemoryStore memory,
+    required SkillManager skills,
+  }) =>
+      [
+        Tool(
+          name: 'run_shell',
+          description:
+              'Run a shell command (sh) on the Android device. Working dir is the app workspace.',
+          parameters: [
+            ToolParameter(
+                name: 'command', type: 'string', description: 'Shell command'),
+          ],
+          onExecute: (a) => Shell.run('${a['command']}'),
         ),
-      ],
-      onExecute: (args) async {
-        // Android: use path_provider to access files
-        return 'File reading will be implemented natively on Android';
-      },
-    );
-  }
-
-  static Tool _createFileWriteTool() {
-    return Tool(
-      name: 'file_write',
-      description: 'Write content to a file',
-      parameters: [
-        ToolParameter(
-          name: 'path',
-          type: 'string',
-          description: 'File path to write',
-          required: true,
+        Tool(
+          name: 'read_file',
+          description: 'Read a text file (relative to the workspace)',
+          parameters: [
+            ToolParameter(name: 'path', type: 'string', description: 'File path'),
+          ],
+          onExecute: (a) => Shell.readFile('${a['path']}'),
         ),
-        ToolParameter(
-          name: 'content',
-          type: 'string',
-          description: 'Content to write',
-          required: true,
+        Tool(
+          name: 'write_file',
+          description: 'Write a text file (relative to the workspace)',
+          parameters: [
+            ToolParameter(name: 'path', type: 'string', description: 'File path'),
+            ToolParameter(
+                name: 'content', type: 'string', description: 'File content'),
+          ],
+          onExecute: (a) => Shell.writeFile('${a['path']}', '${a['content']}'),
         ),
-      ],
-      onExecute: (args) async {
-        return 'File writing will be implemented natively on Android';
-      },
-    );
-  }
-
-  static Tool _createFileListTool() {
-    return Tool(
-      name: 'file_list',
-      description: 'List files in a directory',
-      parameters: [
-        ToolParameter(
-          name: 'path',
-          type: 'string',
-          description: 'Directory path',
-          required: true,
+        Tool(
+          name: 'fetch_url',
+          description: 'Download a web page or API response as text',
+          parameters: [
+            ToolParameter(name: 'url', type: 'string', description: 'http(s) URL'),
+          ],
+          onExecute: (a) async {
+            final r = await http
+                .get(Uri.parse('${a['url']}'))
+                .timeout(const Duration(seconds: 30));
+            final body = r.body;
+            return 'HTTP ${r.statusCode}\n'
+                '${body.length > 8000 ? body.substring(0, 8000) : body}';
+          },
         ),
-      ],
-      onExecute: (args) async {
-        return 'File listing will be implemented natively on Android';
-      },
-    );
-  }
-
-  static Tool _createTerminalTool() {
-    return Tool(
-      name: 'terminal',
-      description: 'Execute a shell command (requires Android root or specific permissions)',
-      parameters: [
-        ToolParameter(
-          name: 'command',
-          type: 'string',
-          description: 'Command to execute',
-          required: true,
+        Tool(
+          name: 'memory_read',
+          description: 'Read persistent memory (user profile or agent notes)',
+          parameters: [
+            ToolParameter(
+                name: 'target', type: 'string', description: 'user or agent'),
+          ],
+          onExecute: (a) async =>
+              a['target'] == 'user' ? memory.userProfile : memory.agentMemory,
         ),
-      ],
-      onExecute: (args) async {
-        return 'Terminal execution requires Android root or specific permissions';
-      },
-    );
-  }
-
-  static Tool _createWebSearchTool() {
-    return Tool(
-      name: 'web_search',
-      description: 'Search the web',
-      parameters: [
-        ToolParameter(
-          name: 'query',
-          type: 'string',
-          description: 'Search query',
-          required: true,
+        Tool(
+          name: 'memory_write',
+          description: 'Append a note to persistent memory',
+          parameters: [
+            ToolParameter(
+                name: 'target', type: 'string', description: 'user or agent'),
+            ToolParameter(
+                name: 'content', type: 'string', description: 'Content to add'),
+          ],
+          onExecute: (a) async {
+            if (a['target'] == 'user') {
+              await memory.appendUserProfile('${a['content']}');
+            } else {
+              await memory.appendAgentMemory('${a['content']}');
+            }
+            return 'OK';
+          },
         ),
-      ],
-      onExecute: (args) async {
-        return 'Web search requires internet permission';
-      },
-    );
-  }
-
-  static Tool _createMemoryTool() {
-    return Tool(
-      name: 'memory',
-      description: 'Read or write persistent memory',
-      parameters: [
-        ToolParameter(
-          name: 'action',
-          type: 'string',
-          description: 'Action: read, write, append, clear',
-          required: true,
+        Tool(
+          name: 'skills_list',
+          description: 'List available skills',
+          onExecute: (a) async =>
+              skills.skills.map((s) => '- ${s.name}: ${s.description}').join('\n'),
         ),
-        ToolParameter(
-          name: 'target',
-          type: 'string',
-          description: 'Target: user or agent',
-          required: true,
+        Tool(
+          name: 'skills_view',
+          description: 'View a specific skill',
+          parameters: [
+            ToolParameter(name: 'name', type: 'string', description: 'Skill name'),
+          ],
+          onExecute: (a) async =>
+              skills.getSkill('${a['name']}')?.content ?? 'Skill not found',
         ),
-        ToolParameter(
-          name: 'content',
-          type: 'string',
-          description: 'Content to write/append',
-          required: false,
-        ),
-      ],
-      onExecute: (args) async {
-        return 'Memory operations will be handled by the app';
-      },
-    );
-  }
-
-  static Tool _createSkillTool() {
-    return Tool(
-      name: 'skills',
-      description: 'List or view available skills',
-      parameters: [
-        ToolParameter(
-          name: 'action',
-          type: 'string',
-          description: 'Action: list, view',
-          required: true,
-        ),
-        ToolParameter(
-          name: 'name',
-          type: 'string',
-          description: 'Skill name (for view)',
-          required: false,
-        ),
-      ],
-      onExecute: (args) async {
-        return 'Skills will be listed by the app';
-      },
-    );
-  }
+      ];
 }

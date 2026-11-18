@@ -3,14 +3,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:path_provider/path_provider.dart';
 
-/// Skill model
 class Skill {
   final String name;
   final String description;
   final String category;
   final String version;
   final String content;
-  final String path;
   final List<String> tools;
 
   const Skill({
@@ -19,43 +17,16 @@ class Skill {
     this.category = 'general',
     this.version = '1.0.0',
     this.content = '',
-    this.path = '',
     this.tools = const [],
   });
-
-  factory Skill.fromJson(Map<String, dynamic> json) {
-    return Skill(
-      name: json['name'] as String? ?? 'Unknown',
-      description: json['description'] as String? ?? '',
-      category: json['category'] as String? ?? 'general',
-      version: json['version'] as String? ?? '1.0.0',
-      content: json['content'] as String? ?? '',
-      path: json['path'] as String? ?? '',
-      tools: json['tools'] != null
-          ? (json['tools'] as List).cast<String>()
-          : [],
-    );
-  }
-
-  Map<String, dynamic> toJson() => {
-        'name': name,
-        'description': description,
-        'category': category,
-        'version': version,
-        'content': content,
-        'path': path,
-        'tools': tools,
-      };
 }
 
-/// Skill manager
 class SkillManager extends ChangeNotifier {
   final List<Skill> _skills = [];
   List<Skill> get skills => List.unmodifiable(_skills);
 
   static const String _skillsDir = 'skills';
 
-  /// Initialize skills
   Future<void> init() async {
     try {
       final dir = await _getSkillsDir();
@@ -71,17 +42,17 @@ class SkillManager extends ChangeNotifier {
     return Directory('${appDir.path}/$_skillsDir');
   }
 
-  /// Load all skills
   Future<void> _loadSkills() async {
+    _skills.clear();
+
+    // Load built-in skills from assets
     try {
-      _skills.clear();
+      final content = await rootBundle.loadString('assets/skills/default-assistant.md');
+      _skills.add(_parseSkill(content, 'default-assistant'));
+    } catch (_) {}
 
-      // Load built-in skills from assets
-      final assetSkill = await rootBundle.loadString('assets/skills/default-assistant.md');
-      final parsed = _parseSkillMarkdown(assetSkill, 'default-assistant');
-      _skills.add(parsed);
-
-      // Load user skills from directory
+    // Load user skills from documents dir
+    try {
       final dir = await _getSkillsDir();
       final files = dir.listSync()
           .whereType<File>()
@@ -92,21 +63,15 @@ class SkillManager extends ChangeNotifier {
         try {
           final content = file.readAsStringSync();
           final name = file.uri.pathSegments.last.replaceAll('.md', '');
-          final skill = _parseSkillMarkdown(content, name);
-          _skills.add(skill);
-        } catch (e) {
-          debugPrint('Error loading skill file: ${file.path}');
-        }
+          _skills.add(_parseSkill(content, name));
+        } catch (_) {}
       }
+    } catch (_) {}
 
-      notifyListeners();
-    } catch (e) {
-      debugPrint('Error loading skills: $e');
-    }
+    notifyListeners();
   }
 
-  /// Parse markdown with YAML frontmatter
-  Skill _parseSkillMarkdown(String content, String fallbackName) {
+  Skill _parseSkill(String content, String fallbackName) {
     String name = fallbackName;
     String description = '';
     String category = 'general';
@@ -123,22 +88,17 @@ class SkillManager extends ChangeNotifier {
           if (line.contains(':')) {
             final colonIndex = line.indexOf(':');
             final key = line.substring(0, colonIndex).trim();
-            final value = line.substring(colonIndex + 1).trim();
-            final cleanValue = value.replaceAll('"', '').replaceAll("'", '');
+            final value = line
+                .substring(colonIndex + 1)
+                .trim()
+                .replaceAll('"', '')
+                .replaceAll("'", '');
 
             switch (key) {
-              case 'name':
-                name = cleanValue;
-                break;
-              case 'description':
-                description = cleanValue;
-                break;
-              case 'category':
-                category = cleanValue;
-                break;
-              case 'version':
-                version = cleanValue;
-                break;
+              case 'name': name = value; break;
+              case 'description': description = value; break;
+              case 'category': category = value; break;
+              case 'version': version = value; break;
             }
           }
         }
@@ -151,20 +111,25 @@ class SkillManager extends ChangeNotifier {
       category: category,
       version: version,
       content: body,
-      path: '',
     );
   }
 
-  /// Get skill by name
   Skill? getSkill(String name) {
     try {
       return _skills.firstWhere((s) => s.name == name);
-    } catch (e) {
+    } catch (_) {
       return null;
     }
   }
 
-  /// Create new skill
+  List<Skill> getSkillsByCategory(String category) {
+    return _skills.where((s) => s.category == category).toList();
+  }
+
+  List<String> getCategories() {
+    return _skills.map((s) => s.category).toSet().toList();
+  }
+
   Future<Skill> createSkill({
     required String name,
     required String content,
@@ -181,42 +146,25 @@ class SkillManager extends ChangeNotifier {
       final dir = await _getSkillsDir();
       final file = File('${dir.path}/$name.md');
       await file.writeAsString(content);
-
-      _skills.add(skill);
-      notifyListeners();
     } catch (e) {
       debugPrint('Error creating skill: $e');
     }
 
+    _skills.add(skill);
+    notifyListeners();
     return skill;
   }
 
-  /// Delete skill
   Future<void> deleteSkill(String name) async {
-    final index = _skills.indexWhere((s) => s.name == name);
-    if (index == -1) return;
-
-    _skills.removeAt(index);
+    _skills.removeWhere((s) => s.name == name);
     notifyListeners();
 
     try {
       final dir = await _getSkillsDir();
       final file = File('${dir.path}/$name.md');
-      if (await file.exists()) {
-        await file.delete();
-      }
+      if (await file.exists()) await file.delete();
     } catch (e) {
-      debugPrint('Error deleting skill file: $e');
+      debugPrint('Error deleting skill: $e');
     }
-  }
-
-  /// Get skills by category
-  List<Skill> getSkillsByCategory(String category) {
-    return _skills.where((s) => s.category == category).toList();
-  }
-
-  /// Get all categories
-  List<String> getCategories() {
-    return _skills.map((s) => s.category).toSet().toList();
   }
 }
